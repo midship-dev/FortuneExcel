@@ -323,6 +323,10 @@ export class FortuneSheet extends FortuneSheetBase {
               xdr_blipfill.attributeList,
               "r:embed",
               null
+            ) || getXmlAttibute(
+              xdr_blipfill.attributeList,
+              "ns2:embed",
+              null
             );
 
             let imageObject = this.getBase64ByRid(rembed, drawingRelsFile);
@@ -421,6 +425,106 @@ export class FortuneSheet extends FortuneSheetBase {
         }
       }
     }
+
+    // Handle oneCellAnchor images
+    if (drawingFile != null && drawingRelsFile != null) {
+      let oneCellAnchors = this.readXml.getElementsByTagName(
+        "xdr:oneCellAnchor",
+        drawingFile
+      );
+
+      if (oneCellAnchors != null && oneCellAnchors.length > 0) {
+        for (let i = 0; i < oneCellAnchors.length; i++) {
+          let oneCellAnchor = oneCellAnchors[i];
+          let xdrFroms = oneCellAnchor.getInnerElements("xdr:from");
+          let xdr_blipfills = oneCellAnchor.getInnerElements("a:blip");
+          let xdr_exts = oneCellAnchor.getInnerElements("xdr:ext");
+
+          if (
+            xdrFroms != null &&
+            xdr_blipfills != null &&
+            xdrFroms.length > 0 &&
+            xdr_blipfills.length > 0
+          ) {
+            let xdrFrom = xdrFroms[0],
+              xdr_blipfill = xdr_blipfills[0];
+
+            let rembed = getXmlAttibute(
+              xdr_blipfill.attributeList,
+              "r:embed",
+              null
+            ) || getXmlAttibute(
+              xdr_blipfill.attributeList,
+              "ns2:embed",
+              null
+            );
+
+            let imageObject = this.getBase64ByRid(rembed, drawingRelsFile);
+            if (imageObject == null) { continue; }
+
+            let x_n = 0, y_n = 0;
+            let cx_n = 0, cy_n = 0;
+
+            if (xdr_exts != null && xdr_exts.length > 0) {
+              let extAttr = xdr_exts[0].attributeList;
+              let cx = getXmlAttibute(extAttr, "cx", null);
+              let cy = getXmlAttibute(extAttr, "cy", null);
+              if (cx != null) { cx_n = getPxByEMUs(parseInt(cx)); }
+              if (cy != null) { cy_n = getPxByEMUs(parseInt(cy)); }
+            }
+
+            imageObject.fromCol = this.getXdrValue(
+              xdrFrom.getInnerElements("xdr:col")
+            );
+            imageObject.fromColOff = getPxByEMUs(
+              this.getXdrValue(xdrFrom.getInnerElements("xdr:colOff"))
+            );
+            imageObject.fromRow = this.getXdrValue(
+              xdrFrom.getInnerElements("xdr:row")
+            );
+            imageObject.fromRowOff = getPxByEMUs(
+              this.getXdrValue(xdrFrom.getInnerElements("xdr:rowOff"))
+            );
+
+            imageObject.originWidth = cx_n;
+            imageObject.originHeight = cy_n;
+            imageObject.type = "2";
+            imageObject.isFixedPos = false;
+            imageObject.fixedLeft = 0;
+            imageObject.fixedTop = 0;
+
+            let imageBorder: IfortuneImageBorder = {
+              color: "#000",
+              radius: 0,
+              style: "solid",
+              width: 0,
+            };
+            imageObject.border = imageBorder;
+
+            let imageCrop: IfortuneImageCrop = {
+              height: cy_n,
+              offsetLeft: 0,
+              offsetTop: 0,
+              width: cx_n,
+            };
+            imageObject.crop = imageCrop;
+
+            let imageDefault: IfortuneImageDefault = {
+              height: cy_n,
+              left: x_n,
+              top: y_n,
+              width: cx_n,
+            };
+            imageObject.default = imageDefault;
+
+            if (this.images == null) {
+              this.images = {};
+            }
+            this.images[generateRandomIndex("image")] = imageObject;
+          }
+        }
+      }
+    }
   }
 
   private getXdrValue(ele: Element[]): number {
@@ -444,8 +548,10 @@ export class FortuneSheet extends FortuneSheetBase {
         let Id = getXmlAttibute(attrList, "Id", null);
         let src = getXmlAttibute(attrList, "Target", null);
         if (Id == rid) {
-          src = src.replace(/\.\.\//g, "");
-          src = "xl/" + src;
+          src = src.replace(/\.\.\//g, "").replace(/^\//, "");
+          if (!src.startsWith("xl/")) {
+            src = "xl/" + src;
+          }
           let imgage = this.imageList.getImageByName(src);
           return imgage;
         }
